@@ -125,11 +125,14 @@ def handle_domain_input(message):
         user_data[message.chat.id]["source"] = "telegram"
         user_data[message.chat.id]["name"] = message.from_user.first_name
         # Функция для отправки запроса на Devserver_portal.laxo.one
-        registerUser(user_data[message.chat.id])
-        bot.send_message(
-            message.chat.id,
-            "Спасибо! Ваши данные приняты. Мы свяжемся с вами в ближайшее время.",
-        )
+        isReg = registerUser(user_data[message.chat.id])
+        if isReg:
+            bot.send_message(message.chat.id, f"Ошибка при создании " + isReg + f".\n Попробуйте снова /start")
+        else:
+            bot.send_message(
+                message.chat.id,
+                f"Спасибо! Система зарегистрирована, ссылка приглашение отправлена на ваш email: {user_data[message.chat.id]['email']}",
+            )
         # Очищаем данные пользователя
         user_data.pop(message.chat.id, None)
     else:
@@ -150,6 +153,7 @@ def registerUser(user):
                 "user_phone": user["phone"],
                 "company_name": "Laxo",
                 "user_domain": user["domain"],
+                # "user_domain": "team",
                 "code_invite": "welcome",
                 "lang": "ru_RU",
                 "user_email": user["email"],
@@ -162,9 +166,11 @@ def registerUser(user):
         }
     ]
     response = requests.post(url, data=json.dumps(data)).json()
-   #  answer = response.get("replies")
-   #  print(*answer) 
-#  print(data)
+    responseCode = response[0]["code"]
+    if responseCode == 200:
+        return False
+    else:
+        return response[1]["response"]["errs"][0]
 
 
 # Запуск бота
