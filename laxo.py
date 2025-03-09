@@ -4,19 +4,16 @@ import requests
 import json
 import re  # Для регулярных выражений
 
-token = "7462331188:AAEUTSbardESu94WGgG0mxi8mx6oZ0eg_-A"
+token = '7462331188:AAEUTSbardESu94WGgG0mxi8mx6oZ0eg_-A'
 bot = telebot.TeleBot(token)
 
-# Словарь для хранения состояний пользователей
+answer = ''
+
 user_states = {}
 
-# Словарь для хранения данных пользователей
 user_data = {}
 
-# Регулярные выражения для проверки email, телефона и доменного имени
 EMAIL_REGEX = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-PHONE_REGEX = r"^\+?\d{10,15}$"  # Пример: +79161234567 или 89161234567
-DOMAIN_REGEX = r"^[a-zA-Z0-9-]+(\.[a-zA-Z]{2,})+$"  # Пример: example.com или my-site.ru
 
 
 # Обработчик команды /start
@@ -73,12 +70,26 @@ def handle_email_input(message):
     # Проверка email с помощью регулярного выражения
     if re.match(EMAIL_REGEX, email):
         user_data[message.chat.id]["email"] = email
-        # Переводим пользователя в состояние "ожидание телефона"
-        user_states[message.chat.id] = "waiting_for_phone"
-        bot.send_message(
-            message.chat.id,
-            "Спасибо! Теперь введите ваш мобильный телефон (в формате +79161234567).",
-        )
+        # Сбрасываем состояние, так как данные собраны
+        user_states.pop(message.chat.id, None)
+
+        # Добавляем дополнительные данные для регистрации
+        user_data[message.chat.id]["source"] = "telegram"
+        user_data[message.chat.id]["name"] = message.from_user.first_name
+
+        # Функция для отправки запроса на сервер
+        isReg = registerUser(user_data[message.chat.id])
+
+        if isReg:
+            bot.send_message(message.chat.id, f"Ошибка при создании: {isReg}\nПопробуйте снова /start")
+        else:
+            bot.send_message(
+                message.chat.id,
+                # f"Спасибо! Система зарегистрирована, ссылка-приглашение отправлена на ваш email: {user_data[message.chat.id]['email']}",
+                f"{answer}"
+            )
+        # Очищаем данные пользователя
+        user_data.pop(message.chat.id, None)
     else:
         bot.send_message(
             message.chat.id,
@@ -86,89 +97,36 @@ def handle_email_input(message):
         )
 
 
-# Обработчик для ввода телефона
-@bot.message_handler(
-    func=lambda message: user_states.get(message.chat.id) == "waiting_for_phone"
-)
-def handle_phone_input(message):
-    phone = message.text
-
-    # Проверка телефона с помощью регулярного выражения
-    if re.match(PHONE_REGEX, phone):
-        user_data[message.chat.id]["phone"] = phone
-        # Переводим пользователя в состояние "ожидание доменного имени"
-        user_states[message.chat.id] = "waiting_for_domain"
-        bot.send_message(
-            message.chat.id,
-            "Отлично! Теперь введите используемое доменное имя (например, example.com).",
-        )
-    else:
-        bot.send_message(
-            message.chat.id,
-            "Кажется, это не похоже на телефонный номер. Пожалуйста, введите номер в формате +79161234567.",
-        )
-
-
-# Обработчик для ввода доменного имени
-@bot.message_handler(
-    func=lambda message: user_states.get(message.chat.id) == "waiting_for_domain"
-)
-def handle_domain_input(message):
-    domain = message.text
-
-    # Проверка доменного имени с помощью регулярного выражения
-    if re.match(DOMAIN_REGEX, domain):
-        user_data[message.chat.id]["domain"] = domain
-        # Сбрасываем состояние, так как все данные собраны
-        user_states.pop(message.chat.id, None)
-
-        user_data[message.chat.id]["source"] = "telegram"
-        user_data[message.chat.id]["name"] = message.from_user.first_name
-        # Функция для отправки запроса на Devserver_portal.laxo.one
-        isReg = registerUser(user_data[message.chat.id])
-        if isReg:
-            bot.send_message(message.chat.id, f"Ошибка при создании " + isReg + f".\n Попробуйте снова /start")
-        else:
-            bot.send_message(
-                message.chat.id,
-                f"Спасибо! Система зарегистрирована, ссылка приглашение отправлена на ваш email: {user_data[message.chat.id]['email']}",
-            )
-        # Очищаем данные пользователя
-        user_data.pop(message.chat.id, None)
-    else:
-        bot.send_message(
-            message.chat.id,
-            "Кажется, это не похоже на доменное имя. Пожалуйста, введите имя в формате example.com.",
-        )
-
-
 def registerUser(user):
+    global answer
     url = "https://devserver_portal.laxo.one/"
-
+    
+    # return False
     data = [
         {
             "param": {
                 "user_name": user["name"],
                 "user_login": user["email"],
-                "user_phone": user["phone"],
-                "company_name": "Laxo",
-                "user_domain": user["domain"],
-                # "user_domain": "team",
-                "code_invite": "welcome",
+                "user_phone": "",  # Телефон больше не запрашивается
+                "company_name": "", # Компания  больше не запрашивается
+                "user_domain": "",  # Доменное имя больше не запрашивается
+                "code_invite": "", # Код приглашение  имя больше не запрашивается
                 "lang": "ru_RU",
                 "user_email": user["email"],
                 "country": "ru",
                 "source": "telegram",
             },
             "class": "portal",
-            "method": "register",
+            "method": "register_by_telegram",
             "uhcns": "invisible",
         }
     ]
+    print(data)
     response = requests.post(url, data=json.dumps(data)).json()
     responseCode = response[0]["code"]
     if responseCode == 200:
-        return False
+          answer = response[0]["response"]
+          return False 
     else:
         return response[1]["response"]["errs"][0]
 
