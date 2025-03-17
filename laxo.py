@@ -10,10 +10,11 @@ bot = telebot.TeleBot(token)
 
 answer = ''
 error = ''
-user_states = {}  
-user_data = {}  
+user_states = {}  # Словарь для хранения состояний пользователей
+user_data = {}    # Словарь для хранения данных пользователей
 
 EMAIL_REGEX = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+PHONE_REGEX = r"^\+?[1-9]\d{9,14}$"
 
 
 # Обработчик команды /start
@@ -89,15 +90,40 @@ def handle_email_input(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_email_"))
 def handle_confirm_email(call):
     if call.data == "confirm_email_yes":
-        # Подтверждение email, продолжаем регистрацию
-        user_states.pop(call.message.chat.id, None)
+        # Подтверждение email, переходим к вводу номера телефона
+        user_states[call.message.chat.id] = "waiting_for_phone"
+        bot.send_message(
+            call.message.chat.id,
+            "Пожалуйста, введите контактный номер телефона. Мы не передаем его третьим лицам.",
+        )
+    elif call.data == "confirm_email_no":
+        # Возвращаем пользователя к вводу email
+        user_states[call.message.chat.id] = "waiting_for_email"
+        bot.send_message(
+            call.message.chat.id,
+            "Пожалуйста, введите ваш адрес эл. почты еще раз.",
+        )
+
+
+# Обработчик для ввода номера телефона
+@bot.message_handler(
+    func=lambda message: user_states.get(message.chat.id) == "waiting_for_phone"
+)
+def handle_phone_input(message):
+    phone = message.text
+
+    # Проверка номера телефона с помощью регулярного выражения
+    if re.match(PHONE_REGEX, phone):
+        user_data[message.chat.id]["phone"] = phone
+        # Сбрасываем состояние, так как данные собраны
+        user_states.pop(message.chat.id, None)
 
         # Добавляем дополнительные данные для регистрации
-        user_data[call.message.chat.id]["source"] = "telegram"
-        user_data[call.message.chat.id]["name"] = call.from_user.first_name
+        user_data[message.chat.id]["source"] = "telegram"
+        user_data[message.chat.id]["name"] = message.from_user.first_name
 
         # Функция для отправки запроса на сервер
-        isReg = registerUser(user_data[call.message.chat.id])
+        isReg = registerUser(user_data[message.chat.id])
 
         if isReg:
             message_text = "Регистрация завершена! Теперь осталось только активировать вашу систему и начать работу. Для этого нажмите АКТИВИРОВАТЬ. Вы также можете сделать это позднее, нажав на кнопку активации в письме, которое мы отправили на ваш адрес эл. почты."
@@ -109,23 +135,21 @@ def handle_confirm_email(call):
             markup.add(button_activate)
 
             bot.send_message(
-                chat_id=call.message.chat.id, 
+                chat_id=message.chat.id, 
                 text=message_text,  
                 reply_markup=markup,
                 parse_mode="html"
             )
         else:
             bot.send_message(
-                call.message.chat.id,
+                message.chat.id,
                 f"Ошибка при создании: {error}\nПопробуйте снова /start"
             )
-        user_data.pop(call.message.chat.id, None)
-    elif call.data == "confirm_email_no":
-        # Возвращаем пользователя к вводу email
-        user_states[call.message.chat.id] = "waiting_for_email"
+        user_data.pop(message.chat.id, None)
+    else:
         bot.send_message(
-            call.message.chat.id,
-            "Пожалуйста, введите ваш адрес эл. почты еще раз.",
+            message.chat.id,
+            "Кажется, это не похоже на номер телефона. Пожалуйста, введите номер в формате +79123456789.",
         )
 
 
@@ -138,7 +162,7 @@ def registerUser(user):
             "param": {
                 "user_name": user["name"],
                 "user_login": user["email"],
-                "user_phone": "",  
+                "user_phone": user["phone"],
                 "company_name": "",
                 "user_domain": "",  
                 "code_invite": "", 
