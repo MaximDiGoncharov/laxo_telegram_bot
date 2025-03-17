@@ -4,14 +4,14 @@ import requests
 import json
 import re  # Для регулярных выражений
 
-token = '7462331188:AAEUTSbardESu94WGgG0mxi8mx6oZ0eg_-A'
+# laxoone_bot
+token = '7524888906:AAF1avPczOf_sS1lXSDM19tU_94yb5JDmQ4'
 bot = telebot.TeleBot(token)
 
 answer = ''
-
-user_states = {}
-
-user_data = {}
+error = ''
+user_states = {}  
+user_data = {}  
 
 EMAIL_REGEX = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
 
@@ -20,14 +20,10 @@ EMAIL_REGEX = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
 @bot.message_handler(commands=["start"])
 def start(message):
     markup = types.InlineKeyboardMarkup()
-
-    text_message = (
-        "Давайте создадим CRM с бесплатным пробным периодом 2 месяца! Готовы?"
-    )
+    text_message = "Давайте создадим аккаунт в Laxo CRM с бесплатным пробным периодом 2 месяца! Готовы?"
     button_yes = types.InlineKeyboardButton(text="Да", callback_data="start_yes")
     button_no = types.InlineKeyboardButton(text="Нет", callback_data="start_no")
-    markup.add(button_yes)
-    markup.add(button_no)
+    markup.add(button_yes, button_no)
 
     bot.send_message(
         message.chat.id,
@@ -47,10 +43,9 @@ def handle_start_callbacks(call):
         user_data[call.message.chat.id] = {}
         bot.answer_callback_query(call.id, "Вы выбрали 'Да'!")
         bot.send_message(
-            call.message.chat.id, "Отлично! Пожалуйста, введите ваш email."
+            call.message.chat.id, "Отлично! Пожалуйста, введите ваш адрес эл. почты."
         )
     elif call.data == "start_no":
-        # Сбрасываем состояние, если пользователь выбрал "Нет"
         user_states.pop(call.message.chat.id, None)
         user_data.pop(call.message.chat.id, None)
         bot.answer_callback_query(call.id, "Вы выбрали 'Нет'.")
@@ -70,26 +65,19 @@ def handle_email_input(message):
     # Проверка email с помощью регулярного выражения
     if re.match(EMAIL_REGEX, email):
         user_data[message.chat.id]["email"] = email
-        # Сбрасываем состояние, так как данные собраны
-        user_states.pop(message.chat.id, None)
+        # Переводим пользователя в состояние подтверждения email
+        user_states[message.chat.id] = "confirming_email"
 
-        # Добавляем дополнительные данные для регистрации
-        user_data[message.chat.id]["source"] = "telegram"
-        user_data[message.chat.id]["name"] = message.from_user.first_name
+        markup = types.InlineKeyboardMarkup()
+        button_yes = types.InlineKeyboardButton(text="ДА", callback_data="confirm_email_yes")
+        button_no = types.InlineKeyboardButton(text="НЕТ", callback_data="confirm_email_no")
+        markup.add(button_yes, button_no)
 
-        # Функция для отправки запроса на сервер
-        isReg = registerUser(user_data[message.chat.id])
-
-        if isReg:
-            bot.send_message(message.chat.id, f"Ошибка при создании: {isReg}\nПопробуйте снова /start")
-        else:
-            bot.send_message(
-                message.chat.id,
-                # f"Спасибо! Система зарегистрирована, ссылка-приглашение отправлена на ваш email: {user_data[message.chat.id]['email']}",
-                f"{answer}"
-            )
-        # Очищаем данные пользователя
-        user_data.pop(message.chat.id, None)
+        bot.send_message(
+            message.chat.id,
+            f"Адрес эл. почты указан верно? {email}\nДА для подтверждения или НЕТ, если хотите его изменить.",
+            reply_markup=markup,
+        )
     else:
         bot.send_message(
             message.chat.id,
@@ -97,20 +85,63 @@ def handle_email_input(message):
         )
 
 
+# Обработчик для подтверждения email
+@bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_email_"))
+def handle_confirm_email(call):
+    if call.data == "confirm_email_yes":
+        # Подтверждение email, продолжаем регистрацию
+        user_states.pop(call.message.chat.id, None)
+
+        # Добавляем дополнительные данные для регистрации
+        user_data[call.message.chat.id]["source"] = "telegram"
+        user_data[call.message.chat.id]["name"] = call.from_user.first_name
+
+        # Функция для отправки запроса на сервер
+        isReg = registerUser(user_data[call.message.chat.id])
+
+        if isReg:
+            message_text = "Регистрация завершена! Теперь осталось только активировать вашу систему и начать работу. Для этого нажмите АКТИВИРОВАТЬ. Вы также можете сделать это позднее, нажав на кнопку активации в письме, которое мы отправили на ваш адрес эл. почты."
+            markup = types.InlineKeyboardMarkup()
+            button_activate = types.InlineKeyboardButton(
+                text="Активировать", 
+                url=answer 
+            )
+            markup.add(button_activate)
+
+            bot.send_message(
+                chat_id=call.message.chat.id, 
+                text=message_text,  
+                reply_markup=markup,
+                parse_mode="html"
+            )
+        else:
+            bot.send_message(
+                call.message.chat.id,
+                f"Ошибка при создании: {error}\nПопробуйте снова /start"
+            )
+        user_data.pop(call.message.chat.id, None)
+    elif call.data == "confirm_email_no":
+        # Возвращаем пользователя к вводу email
+        user_states[call.message.chat.id] = "waiting_for_email"
+        bot.send_message(
+            call.message.chat.id,
+            "Пожалуйста, введите ваш адрес эл. почты еще раз.",
+        )
+
+
 def registerUser(user):
-    global answer
+    global answer, error
     url = "https://devserver_portal.laxo.one/"
     
-    # return False
     data = [
         {
             "param": {
                 "user_name": user["name"],
                 "user_login": user["email"],
-                "user_phone": "",  # Телефон больше не запрашивается
-                "company_name": "", # Компания  больше не запрашивается
-                "user_domain": "",  # Доменное имя больше не запрашивается
-                "code_invite": "", # Код приглашение  имя больше не запрашивается
+                "user_phone": "",  
+                "company_name": "",
+                "user_domain": "",  
+                "code_invite": "", 
                 "lang": "ru_RU",
                 "user_email": user["email"],
                 "country": "ru",
@@ -125,11 +156,11 @@ def registerUser(user):
     response = requests.post(url, data=json.dumps(data)).json()
     responseCode = response[0]["code"]
     if responseCode == 200:
-          answer = response[0]["response"]
-          return False 
+        answer = response[0]["response"]
+        return True 
     else:
-        return response[1]["response"]["errs"][0]
+        error = response[1]["response"]["errs"][0]
+        return False
 
 
-# Запуск бота
 bot.polling(none_stop=True)
