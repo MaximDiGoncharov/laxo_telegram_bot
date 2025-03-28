@@ -11,3 +11,4 @@ nohup python bot.py > output.log 2>&1 &
 Запущен на cron, каждые 5 минут 
 Проверить crontab -l
 Создать crontaab -e 
+*/5 * * * * /home/maxim/repos/telegram/restart_telegram_bot.sh 
