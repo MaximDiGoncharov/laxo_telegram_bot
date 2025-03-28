@@ -176,7 +176,6 @@ def registerUser(user):
             "uhcns": "invisible",
         }
     ]
-    print(data)
     response = requests.post(url, data=json.dumps(data)).json()
     responseCode = response[0]["code"]
     if responseCode == 200:
